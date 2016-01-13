@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Rob in Soundland</title>
+<link href='http://fonts.googleapis.com/css?family=Fondamento' rel='stylesheet' type='text/css'>
+<style>
+	html, body {
+		display:block;
+		width:100%;
+		height:100%;
+		margin:0px;
+		overflow:hidden;
+	}
+	
+	.footer {
+		position:absolute;
+		border:solid 3px rgba(255,255,255,0.7);
+		background: rgba(0,0,0,0.7);
+		font-family: 'Fondamento', cursive;
+		color:white;
+		border-radius:10px;
+		padding:15px 30px;
+		font-size:12px;
+		top:20px;
+		right:20px;
+		text-align:right;
+		display:none;
+	}
+	
+	h1, h2 {
+		margin:0px;
+		padding:0px;
+	}
+	
+	h1 {
+		font-size:24px;
+		padding-left:60px;
+	}
+	
+	#not-supported {
+		display:none;
+	}
+	
+	p a {
+		color:rgb(200,200,200)
+	}
+	
+	p a:hover {
+		color:rgb(220,220,220)
+	}
+	
+	#resizer {
+		font-size:14px;
+		position:absolute;
+		top:15px;
+		left:20px;
+		background:rgba(255,255,255,0.2);
+		padding:5px 13px;
+		border-radius:7px;
+		cursor:pointer;
+	}
+	
+	#resizer:hover {
+		background:rgba(255,255,255,0.3);
+	}
+
+	.loading {
+		font-size:24px;
+		font-family: 'Fondamento', cursive;
+		text-align:center;
+		color:white;
+		background:rgba(0,0,0,0.7);
+		border-radius:15px;
+		padding:15px 30px;
+		position:absolute;
+		top:20%;
+		width:400px;
+		left:50%;
+		border:solid 6px white;
+		margin-left:-200px;
+		z-index:1000;
+	}
+
+	.title {
+		font-size:28px;
+		margin-bottom:15px;
+	}
+	
+</style>
+
+<script src="jq.js"></script>
+<script type="text/javascript">
+
+function engine(drawer, km) {
+	this.drawer = drawer;
+	this.km = km;
+	this.lastUpdateTimestamp;
+	this.deltaTime = 0;
+	this.canDraw = true;
+	this.init = false;
+}
+
+engine.prototype.update = function() {
+	this.canDraw = false;
+	var dX = 0;
+	var dY = 0;
+	if (this.km.keys.up) {
+		dY = 1;
+		this.canDraw = true;
+	} else if (this.km.keys.down) {
+		dY = -1;
+		this.canDraw = true;
+	}
+	
+	if (this.km.keys.left) {
+		dX = 1;
+		this.canDraw = true;
+	} else if (this.km.keys.right) {
+		dX = -1;
+		this.canDraw = true;
+	}
+	
+	if ((this.drawer.active && this.drawer.active.light<100) || !$.isEmptyObject(this.drawer.cooldown))
+		this.canDraw = true;
+	
+	this.drawer.updatePosition(dX, dY);
+}
+
+engine.prototype.draw = function() {
+	if (!this.init) {
+		this.canDraw = true;	
+	}
+	
+	if (this.canDraw) {
+		this.drawer.draw();
+		this.canDraw = false;
+	}
+	
+	if (!this.init)
+		this.draw = this.drawAfterInit;
+}
+
+engine.prototype.drawAfterInit = function() {
+	if (this.canDraw) {
+		this.drawer.draw();
+		this.canDraw = false;
+	}
+
+}
+
+engine.prototype.step = function() {
+	var now = Date.now();
+	this.deltaTime = now - this.lastUpdateTimestamp;
+	this.update();
+	this.draw();
+	this.lastUpdateTimestamp = now;
+}
+
+engine.prototype.start = function() {
+	this.lastUpdateTimestamp = Date.now();
+	var self = this;
+	(function gameLoop() {
+	    self.step();
+	    requestAnimFrame(gameLoop, self.drawer.canvas);
+	})();
+}
+
+var person = {
+	canvas:null,
+	ctx:null,
+	r:30,
+	handR: 10,
+	cycle: 60,
+	longCycle: 75,
+	state: 0,
+	longState: 0,
+	step: Math.PI/30,
+	direction: 0,
+	diff: function(a,b) {
+		if (a<0) a += Math.PI*2;
+		if (b<0) b += Math.PI*2;
+		var val = ((a + (Math.PI - b) - Math.PI)); 
+		if (val < -Math.PI) val = (val%Math.PI) + Math.PI;
+		else if (val>Math.PI) val = (val%Math.PI) - Math.PI;
+		
+		return val;
+	},
+	updatePosition: function(x,y) {
+		var deg = 0, div=0, diff;
+		if (x!=0 || y!=0) {
+			this.state = (++this.state)%(this.cycle+1);
+			this.longState = (++this.longState)%(this.longCycle+1);
+			if (x>0) {
+				deg += Math.PI * 3/2;
+				++div;
+			} else if (x<0) {
+				deg += Math.PI / 2;
+				++div;
+			}
+			
+			if (y<0) {
+				deg += Math.PI;
+				++div;
+			} else if (y>0) {
+				if (x>0)
+				deg += Math.PI*2;
+				++div;
+			}
+			deg /= div;
+		
+		
+			if (deg != this.direction) {
+				diff = this.diff(this.direction, deg);
+				if (Math.abs(diff)<this.step) {
+					this.direction = deg;
+					
+				} else {
+					if (Math.abs(this.diff(this.direction+this.step, deg)) < Math.abs(diff) )
+						this.direction += this.step;
+					else {
+						this.direction -= this.step;
+					}
+				}
+			}
+		}
+	},
+	draw: function() {
+		var width = this.canvas.width;
+		var height = this.canvas.height;
+		this.ctx.fillStyle = 'rgb(244,209,177)';
+		
+		this.ctx.save();
+		this.ctx.translate(width>>1, height>>1);
+		this.ctx.rotate(this.direction)
+		this.ctx.strokeStyle = 'black';
+		this.ctx.lineWidth = 2;
+		
+		this.ctx.beginPath();
+		this.ctx.arc(0, 0, this.r, 0, Math.PI*2,1);
+		this.ctx.fill();
+		this.ctx.stroke();
+		
+		
+		
+		
+		// nose
+		this.ctx.beginPath();
+		this.ctx.moveTo(-this.r*1/10, -this.r);
+		this.ctx.quadraticCurveTo(0, -this.r*3/2, this.r*1/10, -this.r );
+		this.ctx.fill();
+		this.ctx.stroke();
+		
+		// eyes
+		
+		this.ctx.fillStyle = 'rgb(255,255,255)';
+		this.ctx.beginPath();
+		this.ctx.lineWidth = 1;
+		this.ctx.moveTo(-this.r*1.5/10, -this.r*29/30);
+		this.ctx.bezierCurveTo(-this.r*1/10, -this.r/2, -this.r*5/10, -this.r/2, -this.r*5/10, -this.r*14/17 );
+		this.ctx.fill();
+		this.ctx.stroke();
+		
+		this.ctx.fillStyle = 'rgb(0,0,0)';
+		this.ctx.beginPath();
+		this.ctx.moveTo(-this.r*2.5/10, -this.r*29/30);
+		this.ctx.bezierCurveTo(-this.r*2/10, -this.r/(3/2), -this.r*4/10, -this.r/(3/2), -this.r*4/10, -this.r*15/17 );
+		this.ctx.fill();
+		
+		this.ctx.fillStyle = 'rgb(255,255,255)';
+		this.ctx.beginPath();
+		this.ctx.lineWidth = 1;
+		this.ctx.moveTo(this.r*1.5/10, -this.r*29/30);
+		this.ctx.bezierCurveTo(this.r*1/10, -this.r/2, this.r*5/10, -this.r/2, this.r*5/10, -this.r*14/17 );
+		this.ctx.fill();
+		this.ctx.stroke();
+		
+		this.ctx.fillStyle = 'rgb(0,0,0)';
+		this.ctx.beginPath();
+		this.ctx.moveTo(this.r*2.5/10, -this.r*29/30);
+		this.ctx.bezierCurveTo(this.r*2/10, -this.r/(3/2), this.r*4/10, -this.r/(3/2), this.r*4/10, -this.r*15/17 );
+		this.ctx.fill();
+		
+		this.ctx.fillStyle = 'rgb(244,209,177)';
+		this.ctx.lineWidth = 2;
+		// hands
+		this.ctx.beginPath();
+		this.ctx.arc(-this.handR*1.5-this.r, this.handR * Math.sin( (this.state/this.cycle) * 2 * Math.PI), this.handR, 0, Math.PI*2,1);
+		this.ctx.fill();
+		this.ctx.stroke();
+		
+		this.ctx.beginPath();
+		this.ctx.arc(this.handR*1.5+this.r, this.handR * Math.sin( (this.state/this.cycle) * 2 * Math.PI + Math.PI), this.handR, 0, Math.PI*2,1);
+		this.ctx.fill();
+		this.ctx.stroke();
+		
+		// hair
+		
+		this.ctx.translate(-this.r, -this.r);
+		this.ctx.lineWidth = 1;
+		this.ctx.fillStyle = '#613e34';
+		this.ctx.beginPath();
+		this.ctx.moveTo(this.r, this.r*6/13);
+		var mod = Math.sin( ((this.longState/(this.longCycle)) * 2 * Math.PI) );
+		this.ctx.quadraticCurveTo(this.r*4/3, this.r/2, (7/4)*this.r, this.r/8 - (this.r/16*mod));
+		this.ctx.quadraticCurveTo(this.r*4/3, this.r*2/3, this.r*1.1, this.r*2/3);
+		
+		this.ctx.quadraticCurveTo(this.r*4/3, this.r*22/30, (8/5)*this.r, this.r*11/20 - (this.r/19*mod));
+		this.ctx.quadraticCurveTo(this.r*4/3, this.r*27/30, this.r*1.1, this.r*27/30);
+		
+		this.ctx.quadraticCurveTo(this.r*5/4, this.r, (9/6)*this.r, this.r*26/30 - (this.r/22*mod));
+		this.ctx.quadraticCurveTo(this.r*4/3, this.r*1.1, this.r*1.05, this.r*1.2);
+		this.ctx.fill();
+		this.ctx.stroke();
+
+		
+		
+		this.ctx.restore();
+	}
+}
+
+var drawer = {
+	canvas: null,
+	ctx: null,
+	offsetX: 0,
+	offsetY: 0,
+	boxWidth: 150,
+	boxHeight: 150,
+	boxes: null,
+	speed: 4,
+	prerenderedBoxes: [],
+	rows: null,
+	person: null,
+	id: 1,
+	cols: null,
+	active: null,
+	cooldown: {},
+	init: function(callback) {
+		var box;
+		this.boxes = [];
+		var width = parseInt(this.canvas.width);
+		var height = parseInt(this.canvas.height);
+		var rows = Math.ceil(height/this.boxHeight);
+		this.rows = Math.ceil(height/this.boxHeight)+2;
+		this.cols = Math.ceil(width/this.boxWidth)+2;
+		this.offsetX = -this.boxWidth;
+		this.offsetY = -this.boxHeight;
+		this.gradient = this.createGradient(); 
+		
+		// person
+		this.person = person;
+		this.person.canvas = this.canvas;
+		this.person.ctx = this.ctx;
+		
+		function makeBox(callback) {
+			box = drawer.makeBox( Math.round(Math.random() * 255), Math.round(Math.random() * 255), Math.round(Math.random() * 255),
+					0,0,drawer.boxWidth, drawer.boxHeight);
+			box.id = drawer.prerenderedBoxes.length;
+			drawer.prerenderedBoxes.push(box);
+			lm.update(drawer.prerenderedBoxes.length, 100);
+
+			if (drawer.prerenderedBoxes.length<100) {
+				setTimeout(function() {makeBox(callback);}, 0);
+			}
+			else {
+				callback();
+			}
+		}
+		
+		
+		makeBox(callback);
+		
+		
+	},
+	createGradient: function() {
+		var canvas = document.createElement('canvas');
+		var ctx = canvas.getContext('2d');
+		
+		var width = parseInt(this.canvas.width);
+		var height = parseInt(this.canvas.height);
+		
+		canvas.width = width;
+		canvas.height = height;
+		
+		var gradient = this.ctx.createRadialGradient(width>>1,height>>1,0.4*height,(width>>1),(height>>1),height);
+		gradient.addColorStop(0, 'rgba(0,0,0,0)');
+		gradient.addColorStop(0.3, 'rgba(0,0,0,0)');
+		gradient.addColorStop(1, 'rgba(0,0,0,0.7)');
+		ctx.fillStyle = gradient;
+		ctx.fillRect(0,0,width,height);
+		return canvas;
+	},
+	drawGradient: function() {
+		this.ctx.drawImage(this.gradient,0,0);
+		return;
+		
+	},
+	createBoxes: function() {
+		
+		for (var i=0; i<this.rows; i++) {
+			this.addRow(1, false);
+		}
+	},
+	
+	updatePosition:function(x,y) {
+		if (x && y) {
+			x = x/2;
+			y = y/2;
+		}
+		this.offsetX += x*this.speed;
+		this.offsetY += y*this.speed;
+		// left
+		if (this.offsetX>-this.boxWidth) {
+			this.addCol(-1, true);
+			this.offsetX -= this.boxWidth;
+		}
+		
+		// right
+		if (this.offsetX<-2*this.boxWidth) {
+			this.addCol(1, true);
+			this.offsetX += this.boxWidth;
+		}
+		
+		// top
+		if (this.offsetY>-this.boxHeight) {
+			this.addRow(-1, true);
+			this.offsetY -= this.boxHeight;
+		}
+		
+		// bottom
+		if (this.offsetY<-2*this.boxHeight) {
+			this.addRow(1, true);
+			this.offsetY += this.boxHeight;
+		}
+		this.person.updatePosition(x,y);
+		var i = Math.ceil((-this.offsetY + (this.canvas.height>>1)) / (this.boxHeight))-1;
+		var j = Math.ceil((-this.offsetX + (this.canvas.width>>1)) / (this.boxWidth))-1;
+		if (!this.active) {
+			this.active = this.boxes[i][j];
+			this.active.sound.play();
+		}
+		
+		if (this.active && this.active != this.boxes[i][j]) {
+			this.cooldown[this.active.boxId] = this.active;
+			this.active = this.boxes[i][j];
+			this.active.sound.play();
+		}
+		if (this.boxes[i][j].light < 100) {
+			this.boxes[i][j].ctx.drawImage(this.boxes[i][j].rawCanvas,0,0);
+			this.boxes[i][j].ctx.save();
+			this.boxes[i][j].ctx.globalAlpha = (0.01*this.boxes[i][j].light);
+			this.boxes[i][j].ctx.drawImage(this.boxes[i][j].activeCanvas,0,0);
+			this.boxes[i][j].ctx.restore();
+			this.boxes[i][j].light +=4;
+		}
+		for (i in this.cooldown) {
+			this.cooldown[i].ctx.drawImage(this.cooldown[i].rawCanvas,0,0);
+			if (this.cooldown[i].light>0) {
+				this.cooldown[i].light -= 6;
+				if (this.cooldown[i].light<0) this.cooldown[i].light = 0;
+				this.cooldown[i].ctx.save();
+				this.cooldown[i].ctx.globalAlpha = (0.01*this.cooldown[i].light);
+				this.cooldown[i].ctx.drawImage(this.cooldown[i].activeCanvas,0,0);
+				this.cooldown[i].ctx.restore();
+			} else {
+				delete this.cooldown[i];
+			}
+		}
+		
+		
+	},
+	addRow: function(pos, remove) {
+		var row = [], rand, el;
+		
+		for (var j=0; j<this.cols; j++) {
+			rand = Math.round(Math.random()*(this.prerenderedBoxes.length-1));
+			row[j] = this.cloneBox(rand);
+		}
+		
+		// push on bottom
+		if (pos == 1) {
+			if (remove)
+				this.boxes.shift();
+			this.boxes.push(row);
+		}
+		
+		if (pos == -1) {
+			if (remove)
+				this.boxes.pop();
+			this.boxes.unshift(row);
+		}
+		
+	},
+	
+	addCol: function(pos, remove) {
+		var i, rand;
+		
+		// push on right
+		if (pos == 1) {
+			for (i=0; i<this.rows; i++) {
+				if (remove)
+					this.boxes[i].shift();
+				rand = Math.round(Math.random()*(this.prerenderedBoxes.length-1));
+				this.boxes[i].push(this.cloneBox(rand));
+			}
+		}
+		
+		if (pos == -1) {
+			for (i=0; i<this.rows; i++) {
+				if (remove)
+					this.boxes[i].pop();
+				rand = Math.round(Math.random()*(this.prerenderedBoxes.length-1));
+				this.boxes[i].unshift(this.cloneBox(rand));
+			}
+		}
+		
+	},
+	cloneBox: function(i) {
+		var canvas = document.createElement('canvas');
+		var ctx = canvas.getContext('2d');
+		rawCanvas = this.prerenderedBoxes[i].rawCanvas;
+		ctx.drawImage(rawCanvas,0,0);
+		var id = this.id;
+		this.id = (++this.id) % 100;
+		var box = {
+				canvas: canvas,
+				ctx: ctx,
+				light: 0,
+				rawCanvas: rawCanvas,
+				boxId: id,
+				activeCanvas: this.prerenderedBoxes[i].activeCanvas,
+				sound: this.prerenderedBoxes[i].sound
+			};
+		return box;
+	},
+	makeBox: function(r,g,b, bx, by, width, height) {
+		x = 0;
+		y = 0;
+		var canvas = document.createElement('canvas');
+		var ctx = canvas.getContext('2d');
+		
+		canvas.width = width;
+		canvas.height = height;
+		
+		ctx.fillStyle = 'rgb('+r+','+g+','+b+')';  
+		ctx.fillRect(x,y,width,height);
+		
+		r = r>>1;
+		g = g>>1;
+		b = b>>1;
+		
+		var radgrad = ctx.createRadialGradient(x+(width>>1),y+(width>>1),0.4*width,x+(width>>1),y+(width>>1),width);
+		radgrad.addColorStop(0, 'rgba('+r+','+g+','+b+',0)');
+		radgrad.addColorStop(0.9, 'rgba('+r+','+g+','+b+',0.7)');
+		radgrad.addColorStop(1, 'rgba('+r+','+g+','+b+',1)');
+		ctx.fillStyle = radgrad;  
+		ctx.fillRect(x,y,width,height);
+		
+		var leftgrad = ctx.createLinearGradient(x,y,x+0.15*width,y);
+		leftgrad.addColorStop(0, 'rgba('+r+','+g+','+b+',0.5)');
+		leftgrad.addColorStop(0.2, 'rgba('+r+','+g+','+b+',0.2)');
+		leftgrad.addColorStop(1, 'rgba('+r+','+g+','+b+',0)');
+		ctx.fillStyle = leftgrad;  
+		ctx.fillRect(x,y,width,height);
+		
+		var leftgradb = ctx.createLinearGradient(x,y,x+0.15*width,y);
+		leftgradb.addColorStop(0, 'rgba(0,0,0,0.5)');
+		leftgradb.addColorStop(0.2, 'rgba(0,0,0,0.3)');
+		leftgradb.addColorStop(0.5, 'rgba(0,0,0,0)');
+		leftgradb.addColorStop(1, 'rgba(0,0,0,0)');
+		ctx.fillStyle = leftgradb;  
+		ctx.fillRect(x,y,width,height);
+		
+		var rightgrad = ctx.createLinearGradient(x+0.85*width,y,x+width,y);
+		rightgrad.addColorStop(1, 'rgba('+r+','+g+','+b+',0.5)');
+		rightgrad.addColorStop(0.8, 'rgba('+r+','+g+','+b+',0.2)');
+		rightgrad.addColorStop(0, 'rgba('+r+','+g+','+b+',0)');
+		ctx.fillStyle = rightgrad;  
+		ctx.fillRect(x,y,width,height);
+		
+		var rightgradb = ctx.createLinearGradient(x+0.85*width,y,x+width,y);
+		rightgradb.addColorStop(1, 'rgba(0,0,0,0.5)');
+		rightgradb.addColorStop(0.9, 'rgba(0,0,0,0.3)');
+		rightgradb.addColorStop(0.6, 'rgba(0,0,0,0)');
+		rightgradb.addColorStop(0, 'rgba(0,0,0,0)');
+		ctx.fillStyle = rightgradb;  
+		ctx.fillRect(x,y,width,height);
+		
+		var topgrad = ctx.createLinearGradient(x,y,x,y+0.15*height);
+		topgrad.addColorStop(0, 'rgba('+r+','+g+','+b+',0.5)');
+		topgrad.addColorStop(0.2, 'rgba('+r+','+g+','+b+',0.2)');
+		topgrad.addColorStop(1, 'rgba('+r+','+g+','+b+',0)');
+		ctx.fillStyle = topgrad;  
+		ctx.fillRect(x,y,width,height);
+		
+		var topgradb = ctx.createLinearGradient(x,y,x,y+0.15*height);
+		topgradb.addColorStop(0, 'rgba(0,0,0,0.5)');
+		topgradb.addColorStop(0.2, 'rgba(0,0,0,0.3)');
+		topgradb.addColorStop(0.5, 'rgba(0,0,0,0)');
+		topgradb.addColorStop(1, 'rgba(0,0,0,0)');
+		ctx.fillStyle = topgradb;  
+		ctx.fillRect(x,y,width,height);
+		
+		var bottomgrad = ctx.createLinearGradient(x,y+0.85*height,x,y+height);
+		bottomgrad.addColorStop(1, 'rgba('+r+','+g+','+b+',0.5)');
+		bottomgrad.addColorStop(0.8, 'rgba('+r+','+g+','+b+',0.2)');
+		bottomgrad.addColorStop(0, 'rgba('+r+','+g+','+b+',0)');
+		ctx.fillStyle = bottomgrad;  
+		ctx.fillRect(x,y,width,height);
+		
+		var bottomgradb = ctx.createLinearGradient(x,y+0.85*height,x,y+height);
+		bottomgradb.addColorStop(1, 'rgba(0,0,0,0.5)');
+		bottomgradb.addColorStop(0.9, 'rgba(0,0,0,0.3)');
+		bottomgradb.addColorStop(0.6, 'rgba(0,0,0,0)');
+		bottomgradb.addColorStop(0, 'rgba(0,0,0,0)');
+		ctx.fillStyle = bottomgradb;  
+		ctx.fillRect(x,y,width,height);
+		
+		var nx,ny, r, opacity;
+		var count = Math.random()*4000 + 1000;
+		for (var i=0; i<count; i++) {
+			nx = Math.round(Math.random()*(width-2)) + x;
+			ny = Math.round(Math.random()*(height-2)) + y;
+			
+			random = Math.round(Math.random()*3.98-0.49);
+			/*random = 0;
+			nx = 100;
+			ny = 100;*/
+			switch(random) {
+				case 0:
+					r = 0.5;
+					opacity = 0.25;
+					break;
+				case 1:
+					r = 0.5;
+					opacity = 0.15;
+					break;
+				case 2:
+					r = 1;
+					opacity = 0.1;
+					break;
+				case 3:
+					r = 1.5;
+					opacity = 0.07;
+					break;
+			}
+			var dis = Math.sqrt(Math.pow(nx-(x+(width>>1)), 2) + Math.pow(ny-(y+(height>>1)), 2));
+			opacity *= Math.pow(Math.abs(Math.sin(-(dis/(width>>1)) * Math.PI / 4)), 2) + 0.05;
+			
+			ctx.fillStyle = 'rgba(0,0,0,'+opacity+')';
+			ctx.beginPath(); 
+			ctx.arc(nx,ny,r,0,Math.PI*2,true);
+			ctx.fill();
+			
+			
+		}
+		
+		var rawCanvas = document.createElement('canvas');
+		var rawCtx = rawCanvas.getContext('2d');
+		rawCanvas.width = canvas.width;
+		rawCanvas.height = canvas.height;
+		rawCtx.drawImage(canvas,0,0);
+		
+		var activeCanvas = document.createElement('canvas');
+		var activeCtx = activeCanvas.getContext('2d');
+		
+		var imageData = ctx.getImageData(0,0,canvas.width, canvas.height);
+
+		for (var i =0; i<imageData.data.length;i+=4) {
+			r = Math.pow(imageData.data[i],1.08) + 15;
+			g = Math.pow(imageData.data[i+1], 1.08) + 15;
+			b = Math.pow(imageData.data[i+2], 1.08) + 15;
+			
+			if (r<127) {
+				r -= 0.0025*Math.pow(r - 127, 2);
+				if (r<0) r = 0;
+			} else {
+				r += 0.0025*Math.pow(r - 127, 2);
+				if (r>255) r = 255;
+			}
+			
+			if (g<127) {
+				g -= 0.0025*Math.pow(g - 127, 2);
+				if (g<0) g = 0;
+			} else {
+				g += 0.0025*Math.pow(g - 127, 2) ;
+				if (g>255) g = 255;
+			}
+			
+			if (b<127) {
+				b -= 0.0025*Math.pow(b - 127, 2);
+				if (b<0) b = 0;
+			} else {
+				b += 0.003*Math.pow(b - 127, 2);
+				if (b>255) b = 255;
+			}
+			imageData.data[i] = r;
+			imageData.data[i+1] = g;
+			imageData.data[i+2] = b;
+			
+		}
+		
+		
+		activeCtx.putImageData(imageData,0,0);
+		
+		var box = {
+				canvas: canvas,
+				ctx: ctx,
+				light: 0,
+				rawCanvas: rawCanvas,
+				activeCanvas: activeCanvas,
+				x: bx,
+				y: by,
+				sound: new bsound(Math.round(Math.random() * 40 + 10))
+			};
+		return box;
+		
+	},
+	processBox: function(i,j) {
+		var ctx = this.boxes[i][j].ctx;
+		ctx.drawImage(this.boxes[i][j].rawCanvas);
+		ctx.fillStyle = 'rgba(255,255,255,0.1)';
+		ctx.fillRect(0,0,this.boxes[i][j].canvas.width,this.boxes[i][j].canvas.height);
+		
+	},
+	draw: function() {
+		for (var i in this.boxes) {
+			for (var j in this.boxes[i]) {
+				this.ctx.drawImage(this.boxes[i][j].canvas, j*this.boxWidth+this.offsetX, i*this.boxHeight+this.offsetY);		
+			}
+		}
+		//this.ctx.drawImage(this.gradient,0,0, this.canvas.width, this.canvas.height);
+		this.person.draw();
+		this.drawGradient();
+		
+	}
+}
+
+
+var sound = new Audio();
+var soundDisabled = false;
+if (sound.mozSetup) {
+	
+	sound.volume = 0.2;
+	sound.mozSetup(1,44100);
+} else {
+	soundDisabled = true;
+}
+
+function bsound(l) {
+	
+	this.volume = 0.2;
+	this.l = l<4?4:l;
+	this.samples = [];
+	this.length = 8000;
+	var value = 0;
+	if (!soundDisabled)
+	for (var i =0; i<this.length;i++) {
+		value = Math.sin((( l- i%(2*l) )/l)*Math.PI*2);
+		
+		if (value > 1) value = 1;
+		if (value < -1) value = -1;
+		
+		if (i<1500) {
+			value *= i/1500;
+		}
+		
+		if (i>this.length-1000) {
+			value *= (1000 - (i - (this.length-1000)))/1000;
+		}
+		
+		this.samples.push(value);
+	}
+	var self = this;
+	
+	
+	this.play = function() {
+		if (soundDisabled) return false;
+		sound.mozWriteAudio(this.samples);
+		
+	}
+}
+
+function draw () {
+	drawer.draw();
+}
+
+function loadingManager() {
+	this.loading = $('.loading');
+	this.footer = $('.footer');
+	this.progressbar = $('.progressbar');
+	this.update = function(value, max) {
+		if (value == max) {
+			this.loading.fadeOut('slow');
+			this.footer.fadeIn('slow');
+		} else {
+			this.progressbar.text(value+ ' / '+max);
+		}
+	}
+}
+
+$(document).ready(function() {
+	$('#box').attr('width', $('#box').width()).attr('height', $('#box').height());
+	drawer.canvas = $('#box')[0];
+	drawer.ctx = drawer.canvas.getContext('2d');
+	lm = new loadingManager();
+	drawer.init(function() {
+		drawer.createBoxes();
+		var km = new keyboardManager();
+		var game = new engine(drawer, km);
+		game.start();	
+	});
+	
+	
+	if (soundDisabled)
+		$('#not-supported').show();
+	
+	$('#resizer').click(function() {
+		$this = $(this);
+		if($this.hasClass('less')) {
+			$('#wrap').hide('slow');
+			$this.removeClass('less');
+			$this.addClass('more');
+			$this.text('more');
+		} else if ($this.hasClass('more')) {
+			$('#wrap').show('slow');
+			$this.addClass('less');
+			$this.removeClass('more');
+			$this.text('less');
+		}
+	});
+});
+
+
+
+function keyboardManager() {
+	var self = this;
+	this.keys = {
+		'up': false,
+		'down': false,
+		'left': false,
+		'right': false
+	};
+	
+	this.map = {
+		87: 'up',
+		83: 'down',
+		65: 'left',
+		68: 'right' 
+	};
+	document.addEventListener('keydown', function(e) {
+		if (self.map[e.keyCode]) {
+			self.keys[self.map[e.keyCode]] = true;
+			e.preventDefault();
+			return false;
+		}
+		
+	}, true);
+	
+	document.addEventListener('keyup', function(e) {
+		if (self.map[e.keyCode]) {
+			self.keys[self.map[e.keyCode]] = false;
+			e.preventDefault();
+			return false;
+		}
+		
+	}, true);
+}
+
+
+/**
+ * @see http://paulirish.com/2011/requestanimationframe-for-smart-animating/
+ */
+window.requestAnimFrame = (function(){
+    return  window.requestAnimationFrame       ||
+            window.webkitRequestAnimationFrame ||
+            window.mozRequestAnimationFrame    ||
+            window.oRequestAnimationFrame      ||
+            window.msRequestAnimationFrame     ||
+            function(/* function */ callback, /* DOMElement */ element){
+              window.setTimeout(callback, 1000 / 60);
+            };
+})();
+
+var lm;
+
+</script>
+</head>
+<body>
+
+	<canvas id="box" style="width:100%;height:100%;"></canvas>
+	
+	<div class="loading">
+		<div class="title">Rob in Soundland</div>
+		<div class="info">Generating graphics and sounds</div>
+		<div class="progressbar"></div>
+	</div>
+	
+	<div class="footer">
+		<h1>Rob in Soundland</h1>
+		<div id="wrap">
+		<p>Using keys W, S, A, D you can move Rob where you want! Passing on square generates sound - try it!<br/>
+			Don't like colors? Reload page! Colors are generated randomly (as well as sounds).
+		</p>
+		<p id="not-supported">We are very sorry but <b>your browser does not support <a href="https://wiki.mozilla.org/Audio_Data_API" onclick="window.open(this.href);return false;">Data Audio API</a></b>.<br/>
+		If you want to check version with sounds please use <a href="http://www.mozilla.org/firefox/new/" onclick="window.open(this.href);return false;">latest Firefox</a> browser!</p>
+		</div>
+		<p>done by <a href="http://michal.biniek.pl" onclick="window.open(this.href);return false;">Michal Biniek</a></p>
+		<div id="resizer" class="less">less</div>
+	</div>
+</body>
+</html>
